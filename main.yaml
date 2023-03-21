@@ -1,0 +1,16 @@
+bin:
+  ffmpeg: '/mnt/c/Users/doqua/node_projects/wsl/mp4utils/bin/ffmpeg'
+  ffprobe: '/mnt/c/Users/doqua/node_projects/wsl/mp4utils/bin/ffprobe'
+  avidemux: '/mnt/c/Users/doqua/node_projects/wsl/mp4utils/bin/squashfs-root/usr/bin/avidemux3_cli'
+
+dirs:
+  scriptFile: "/mnt/c/Users/doqua/node_projects/wsl/mp4utils/j.txt"
+  sourcePath: '/mnt/c/Users/doqua/node_projects/wsl/mp4utils/test/downloads'
+  destPath: '/mnt/c/Users/doqua/node_projects/wsl/mp4utils/test/videos'
+  joinPath: '/mnt/c/Users/doqua/node_projects/wsl/mp4utils/test/joins'
+
+birateSettings:
+  ba: 64 # audio bitrate
+  bv: 500 # video bitrate
+
+videoExtensions: 'webm,mpg,mp2,mpeg, mpe, MPV,   ,ogG, .MP4, .M4P, .M4V,.AVI,.WMV,.MOV, .QT, .flv, /WMV,mKv'
