@@ -1,6 +1,6 @@
 import * as path from "https://deno.land/std@0.180.0/path/mod.ts";
 import { colors } from "https://deno.land/x/cliffy@v0.25.7/ansi/colors.ts";
-import { execSync } from "https://deno.land/std@0.177.0/node/child_process.ts";
+// import { execSync } from "https://deno.land/std@0.177.0/node/child_process.ts";
 import { unlinkSync } from "https://deno.land/std@0.177.0/node/fs.ts";
 import { MP4UtilsFunctions } from "./utils.class.ts";
 
@@ -208,13 +208,36 @@ export class VideoFile {
         console.log(`Converting: ${this.inputFilePath}`);
 
         const cmd_str = `${<string>Deno.env.get("MP4UTILS_BIN_FFMPEG")} -i "${this.inputFilePath}" -hide_banner -r 24 -vf "${this.videoScaleFactor}" -c:v libx264 -b:v ${this._defaultSettings.bv}k -c:a aac -b:a ${this._defaultSettings.ba}k -ar 44100 -ac 2 -filter:a "loudnorm" -tune zerolatency -preset veryfast -movflags +faststart -y "${this.outputFilePath}"`;
+        // deno-lint-ignore no-explicit-any
+        const args: any[] = [
+          '-i', this.inputFilePath,
+          '-hide_banner',
+          '-r', '24',
+          '-vf', this.videoScaleFactor,
+          '-c:v', 'libx264',
+          '-b:v', `${this._defaultSettings.bv}k`,
+          '-c:a', 'aac',
+          '-b:a', `${this._defaultSettings.ba}k`,
+          '-ar', '44100',
+          '-ac', '2',
+          '-filter:a', 'loudnorm',
+          '-tune', 'zerolatency',
+          '-preset', 'veryfast',
+          '-movflags', '+faststart',
+          '-y', this.outputFilePath,
+        ];
+
         console.log(`DEBUG: ${cmd_str}`);
 
         try {
-          execSync(cmd_str, {stdio: 'inherit'});
+          //execSync(cmd_str, {stdio: 'inherit'});
+          const outputRs = await MP4UtilsFunctions.spawnExec(<string>Deno.env.get("MP4UTILS_BIN_FFMPEG"), args);
+          if(outputRs?.exitCode != 0) {
+            throw `Error with Exit Code: ${outputRs?.exitCode}`;
+          }
           this.setStatus(true, VideoFileStatus.successful);
         } catch(e) {
-          console.log(`ERROR: ${e}`);
+          console.log(colors.bgBrightRed.black(`ERROR: ${e}`));
           this.setStatus(false, VideoFileStatus.ffmpegError);
         }
 
@@ -224,6 +247,8 @@ export class VideoFile {
         let index = 0;
         let fails = 0;
         let ArgumentList = `${<string>Deno.env.get("MP4UTILS_BIN_AVIDEMUX")} `;
+        // deno-lint-ignore no-explicit-any
+        const args: any[] = [];
 
         for await (const childVideo of this._children) {
           
@@ -233,6 +258,11 @@ export class VideoFile {
             fails = fails + 1;
           } else {
             ArgumentList += (index == 0) ? `--load "${childVideo.outputFilePath}" ` : `--append "${childVideo.outputFilePath}" `;
+            if(index == 0) {
+              args.push('--load', childVideo.outputFilePath);
+            } else {
+              args.push('--append', childVideo.outputFilePath);
+            }
           }
 
           index = index + 1;
@@ -248,13 +278,20 @@ export class VideoFile {
         // begin JOIN!
         ArgumentList += ` --video-codec copy --audio-codec copy --output-format mp4 --save "${this.outputFilePath}"`;
         console.log(ArgumentList);
+        args.push('--video-codec', 'copy', '--audio-codec', 'copy', '--output-format', 'mp4', '--save', this.outputFilePath);
 
         // Delete old master file before joining
-        try { unlinkSync(this.outputFilePath); } catch(e) { console.log(e) }
+        try { unlinkSync(this.outputFilePath); } catch { console.log(``) }
 
         // Join
         try {
-          execSync(ArgumentList, {stdio: 'inherit'});
+          //execSync(ArgumentList, {stdio: 'inherit'});
+          const outputRs = await MP4UtilsFunctions.spawnExec(<string>Deno.env.get("MP4UTILS_BIN_AVIDEMUX"), args);
+          //console.log(colors.bgBrightCyan(outputRs?.output));
+          if(outputRs?.exitCode != 0) {
+            throw `Error with Exit Code: ${outputRs?.exitCode}`;
+          }
+          
           // success!
           this.setStatus(true, VideoFileStatus.successful);
           this.setStatusChildren(true, VideoFileStatus.successful);

@@ -4,6 +4,8 @@ import * as crypto from "https://deno.land/std@0.180.0/crypto/crypto.ts";
 import moo from "https://esm.sh/moo@0.5.2";
 import * as _ from "https://deno.land/x/lodash@4.17.15-es/lodash.js";
 import { unlinkSync } from "https://deno.land/std@0.177.0/node/fs.ts";
+import { spawn } from "https://deno.land/std@0.177.0/node/child_process.ts";
+import { sleep } from "https://deno.land/x/sleep@v1.2.1/mod.ts";
 
 import { DefaultVideoFileSettings, LineObjectsResult, VideoFile } from "./videofile.class.ts";
 
@@ -245,6 +247,71 @@ export class MP4UtilsFunctions {
         // deno-lint-ignore no-unused-vars
         try { unlinkSync(filePath) } catch(err) { console.log(``) }
         return;
+    }
+
+    // deno-lint-ignore no-explicit-any
+    static async spawnExec(cmd: string, args: any): Promise<any> {
+        let running = true;
+        let content = '';
+        let exitCode = 1;
+
+        try {
+            const sub = spawn(cmd, args);
+
+            sub?.on('error', (e) => {
+                const x = e.toString();
+                content = `${content}\r\n${x}`;
+                console.log(`Failed to start ${cmd}.`);
+                throw 1;
+            });
+
+            sub?.stdout?.on('data', function (data) {
+                const x = data.toString();
+                content = `${content}\r\n${x}`;
+                console.log(x);
+            });
+        
+            sub?.stderr?.on('data', function (data) {
+                const x = data.toString();
+                content = `${content}\r\n${x}`;
+                console.log(x);
+            });
+        
+            sub?.on('exit', function (code) {
+                const x = 'child process exited with code ' + code.toString();
+                content = `${content}\r\n${x}`;
+                console.log(x);
+                exitCode = Number(code);
+                running = false;
+            });
+
+            while(running == true) {
+                await sleep(2);
+    
+                if(!running) {
+                    try {
+                        sub.disconnect();
+                        sub.kill();
+                        sub.unref();
+                    } catch { 
+                        console.log(``);
+                    }
+                    break;
+                }
+            }
+        } catch (error) {
+            running = false;
+            exitCode = 1;
+            console.log(`SUBPROCESS ERROR: ${error}`);
+        }
+
+
+
+        return {
+            output: content,
+            exitCode: exitCode,
+        };
+
     }
 }
 
