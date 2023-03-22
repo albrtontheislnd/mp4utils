@@ -8,9 +8,20 @@ export class MP4UtilsConfiguration {
     private configObject: ConfigObject;
     private configFile = '';
     private videoExtensions: string[] = [];
+    //private compiledMode = false;
 
     constructor() {
-        this.configFile = fileURLToPath(import.meta.resolve("../main.yaml"));
+        const execBin = path.parse(Deno.execPath());
+        if(execBin.base == 'deno') {
+            console.log(`Running: script mode.`);
+            this.configFile = fileURLToPath(import.meta.resolve("../main.yaml"));
+        } else {
+            console.log(`Running: binary/compiled mode.`);
+            this.configFile = path.resolve(execBin.dir, 'main.yaml');
+        }
+
+        console.log(`YAML PATH: ${this.configFile}`);
+        
         this.configObject = cosmiconfigSync('main').load(this.configFile)?.config;
         this.videoExtensions = this.configObject.videoExtensions.toLowerCase().replace(/[^,\da-zA-Z]/img, "").split(/,/im).filter(word => word.length >= 3);
         
