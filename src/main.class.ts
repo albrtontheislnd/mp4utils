@@ -21,15 +21,13 @@ export class MP4UtilsMain {
     }
 
     async init() {
-        // create Commands
         await new Command().name("mp4utils")
         .description("Command line app for convert/join videos")
         // deno-lint-ignore no-unused-vars
         .action(async (options, ...args) => {
             this.videos = await this.utilsService.processScriptFile();
             await this.exec();
-        })        
-        // join        
+        })                
         .parse(Deno.args);
     }
 
@@ -39,18 +37,16 @@ export class MP4UtilsMain {
 
         for await (const videoItem of this.videos) {
             await videoItem.doConvert();
-            //console.log(videoItem.isSuccessful(), videoItem.getStatus());
         }
 
         // clean up!
-        await this.filesCleanUp();
+        this.filesCleanUp();
     }
 
     async displayTableConvert(): Promise<boolean> {
-        const info = colors.bold.blue;
-        console.log(info.underline("[INFO]"), "Files scanned by the app:");
+        console.log(colors.bold.blue.underline("[INFO]"), "Files scanned by the app:");
 
-        const tableItems = await this.generateTableItems();
+        const tableItems = this.generateTableItems();
 
         new Table()
         .header(["Input", "Output", "Video Bitrate", "Audio Bitrate"])
@@ -63,54 +59,44 @@ export class MP4UtilsMain {
 
         // ask for confirmation
         const confirmation = await Confirm.prompt(`Do you want to continue?`);
-
         return confirmation;
     }
 
-    async generateTableItems() {
+    generateTableItems() {
         const tableItems = [];
-        for await (const videoItem of this.videos) {
+        const pushIntoTable = (videoItem: VideoFile, isChild = false) => {
+            // check Exists here!!!
+            if(!videoItem.isInputFileExists()) return;
+
+            const prefix = (isChild) ? '' : '(SINGLE) ';
+
+            tableItems.push([
+                `${prefix}${videoItem.inputFilePath}`,
+                `${prefix}${videoItem.outputFilePath}`,
+                videoItem.videoBitrate,
+                videoItem.audioBitrate
+            ]);
+        };
+
+        for (const videoItem of this.videos) {
             if(videoItem.isJoinFileName) {
-                tableItems.push(
-                    [new Cell(`JOIN/MERGE INTO: ${videoItem.outputFilePath}`).colSpan(4)],
-                );
+                tableItems.push([new Cell(`JOIN/MERGE INTO: ${videoItem.outputFilePath}`).colSpan(4)]);
 
-                for await (const childItem of videoItem.getChildren()) {
-                    // check Exists here!!!
-                    if(!childItem.isInputFileExists()) continue;
-                    // check Exists here!!!
-                    tableItems.push([
-                        childItem.inputFilePath,
-                        childItem.outputFilePath,
-                        childItem.videoBitrate.toString(),
-                        childItem.audioBitrate.toString(),
-                    ]);
-                }
+                for (const childItem of videoItem.getChildren()) pushIntoTable(childItem, true);
 
-                tableItems.push(
-                    [new Cell(`END /./`).colSpan(4)],
-                );
+                tableItems.push([new Cell(`END /./`).colSpan(4)]);
             } else {
-                // check Exists here!!!
-                if(!videoItem.isInputFileExists()) continue;
-                // check Exists here!!!
-                tableItems.push([
-                    `(SINGLE) ${videoItem.inputFilePath}`,
-                    `(SINGLE) ${videoItem.outputFilePath}`,
-                    videoItem.videoBitrate,
-                    videoItem.audioBitrate
-                ]);
+                pushIntoTable(videoItem);
             }
         }
 
         return tableItems;
     }
 
-    async filesCleanUp() {
+    filesCleanUp() {
         // get all files from sourceDir
-        let filenamesFromScanDir: string[] = [];
+        let filenamesFromScanDir: string[] = this.utilsService.processSourceDir();
         let filenamesToDelete: string[] = [];
-        filenamesFromScanDir.push(...this.utilsService.processSourceDir());
 
         const checkFile = (item: VideoFile, isChild = false) => {
             if(item.isSuccessful()) { // successfully converted
@@ -129,18 +115,16 @@ export class MP4UtilsMain {
                 filenamesToDelete = _.without(filenamesToDelete, item.inputFileName);
                 MP4UtilsFunctions.deleteFile(item.outputFilePath);
             } 
-        }
+        };
         
-        for await (const videoItem of this.videos) {
+        for (const videoItem of this.videos) {
             if(!videoItem.isJoinFileName) {
                 checkFile(videoItem);
             } else {
                 // this is a JOIN file                
-                if(!videoItem.isSuccessful()) {
-                    MP4UtilsFunctions.deleteFile(videoItem.outputFilePath);
-                }
+                if(!videoItem.isSuccessful()) MP4UtilsFunctions.deleteFile(videoItem.outputFilePath);
 
-                for await (const childItem of videoItem.getChildren()) {
+                for (const childItem of videoItem.getChildren()) {
                     checkFile(childItem, true);
                 }
             }

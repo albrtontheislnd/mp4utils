@@ -1,7 +1,5 @@
 import * as path from "https://deno.land/std@0.180.0/path/mod.ts";
 import { colors } from "https://deno.land/x/cliffy@v0.25.7/ansi/colors.ts";
-// import { execSync } from "https://deno.land/std@0.177.0/node/child_process.ts";
-import { unlinkSync } from "https://deno.land/std@0.177.0/node/fs.ts";
 import { MP4UtilsFunctions } from "./utils.class.ts";
 
 export enum VideoFileStatus {
@@ -46,8 +44,6 @@ export class VideoFile {
       this._isJoinFileName = isJoin;
       this._randomHex = randomHex;
       this._defaultSettings = defaultSettings;
-
-      // this.del = o.del;
     }
 
     set inputFileName(value: string) {
@@ -104,12 +100,16 @@ export class VideoFile {
       return this._success;
     }
 
-    setStatus(isSuccessful = false, status: VideoFileStatus = VideoFileStatus.blank) {
+    private setStatus(isSuccessful = false, status: VideoFileStatus = VideoFileStatus.blank, recursiveChildren = false) {
       this._success = isSuccessful;
       this._status = status;
+
+      if(recursiveChildren) {
+        this.setStatusChildren(isSuccessful, status);
+      }
     }
 
-    setStatusChildren(isSuccessful = false, status: VideoFileStatus = VideoFileStatus.blank) {
+    private setStatusChildren(isSuccessful = false, status: VideoFileStatus = VideoFileStatus.blank) {
       this._children.forEach(element => {
         element.setStatus(isSuccessful, status);
       });
@@ -169,7 +169,6 @@ export class VideoFile {
 
       try {
         if(p === null) throw 0;
-
         const obj = JSON.parse(p);
         const width = Number(obj?.streams[0]?.width);
         const height = Number(obj?.streams[0]?.height);
@@ -187,7 +186,6 @@ export class VideoFile {
     async doConvert() {
       // announce!
       if(!this.isJoinFileName) {
-
         if(!this.isInputFileExists()) {
           console.log(colors.bgBlack.red(`ERROR! NOT FOUND ${this.inputFilePath}`));
           this.setStatus(false, VideoFileStatus.inputFileDoesNotExist);
@@ -208,6 +206,7 @@ export class VideoFile {
         console.log(`Converting: ${this.inputFilePath}`);
 
         const cmd_str = `${<string>Deno.env.get("MP4UTILS_BIN_FFMPEG")} -i "${this.inputFilePath}" -hide_banner -r 24 -vf "${this.videoScaleFactor}" -c:v libx264 -b:v ${this._defaultSettings.bv}k -c:a aac -b:a ${this._defaultSettings.ba}k -ar 44100 -ac 2 -filter:a "loudnorm" -tune zerolatency -preset veryfast -movflags +faststart -y "${this.outputFilePath}"`;
+        console.log(`DEBUG: ${cmd_str}`);
         // deno-lint-ignore no-explicit-any
         const args: any[] = [
           '-i', this.inputFilePath,
@@ -227,18 +226,15 @@ export class VideoFile {
           '-y', this.outputFilePath,
         ];
 
-        console.log(`DEBUG: ${cmd_str}`);
-
         try {
-          //execSync(cmd_str, {stdio: 'inherit'});
           const outputRs = await MP4UtilsFunctions.spawnExec(<string>Deno.env.get("MP4UTILS_BIN_FFMPEG"), args);
           if(outputRs?.exitCode != 0) {
             throw `Error with Exit Code: ${outputRs?.exitCode}`;
           }
           this.setStatus(true, VideoFileStatus.successful);
         } catch(e) {
-          console.log(colors.bgBrightRed.black(`ERROR: ${e}`));
           this.setStatus(false, VideoFileStatus.ffmpegError);
+          console.log(colors.bgBrightRed.black(`ERROR: ${e}`));
         }
 
       } else {
@@ -251,18 +247,13 @@ export class VideoFile {
         const args: any[] = [];
 
         for await (const childVideo of this._children) {
-          
           await childVideo.doConvert();
 
           if(!childVideo.isSuccessful()) {
             fails = fails + 1;
           } else {
             ArgumentList += (index == 0) ? `--load "${childVideo.outputFilePath}" ` : `--append "${childVideo.outputFilePath}" `;
-            if(index == 0) {
-              args.push('--load', childVideo.outputFilePath);
-            } else {
-              args.push('--append', childVideo.outputFilePath);
-            }
+            args.push(((index == 0) ? '--load' : '--append'), childVideo.outputFilePath);
           }
 
           index = index + 1;
@@ -281,33 +272,23 @@ export class VideoFile {
         args.push('--video-codec', 'copy', '--audio-codec', 'copy', '--output-format', 'mp4', '--save', this.outputFilePath);
 
         // Delete old master file before joining
-        try { unlinkSync(this.outputFilePath); } catch { console.log(``) }
+        MP4UtilsFunctions.deleteFile(this.outputFilePath);
 
         // Join
         try {
-          //execSync(ArgumentList, {stdio: 'inherit'});
           const outputRs = await MP4UtilsFunctions.spawnExec(<string>Deno.env.get("MP4UTILS_BIN_AVIDEMUX"), args);
-          //console.log(colors.bgBrightCyan(outputRs?.output));
           if(outputRs?.exitCode != 0) {
             throw `Error with Exit Code: ${outputRs?.exitCode}`;
           }
-          
           // success!
-          this.setStatus(true, VideoFileStatus.successful);
-          this.setStatusChildren(true, VideoFileStatus.successful);
+          this.setStatus(true, VideoFileStatus.successful, true);
           console.log(`SUCCESSFULLY JOINED/MERGED INTO FILE ${this.outputFilePath}`);
         } catch(e) {
           // failed
-          this.setStatus(false, VideoFileStatus.joinError);
-          this.setStatusChildren(false, VideoFileStatus.joinError);
+          this.setStatus(false, VideoFileStatus.joinError, true);
           console.log(`ERROR MERGING FILE ${this.outputFilePath}: ${e}`);
           console.log('No original files will be deleted because of the setting or there was at least one failed joining task.');
         }
-        
-
       }
-      
-      
-      //
     }
   }

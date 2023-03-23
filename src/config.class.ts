@@ -8,7 +8,6 @@ export class MP4UtilsConfiguration {
     private configObject: ConfigObject;
     private configFile = '';
     private videoExtensions: string[] = [];
-    //private compiledMode = false;
 
     constructor() {
         const execBin = path.parse(Deno.execPath());
@@ -24,7 +23,6 @@ export class MP4UtilsConfiguration {
         
         this.configObject = cosmiconfigSync('main').load(this.configFile)?.config;
         this.videoExtensions = this.configObject.videoExtensions.toLowerCase().replace(/[^,\da-zA-Z]/img, "").split(/,/im).filter(word => word.length >= 3);
-        
         this.setBinEnvs();
     }
 

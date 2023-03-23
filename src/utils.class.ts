@@ -61,21 +61,16 @@ export class MP4UtilsFunctions {
         filenamesFromScanDir.push(...this.processSourceDir());
 
         try {
-            const decoder = new TextDecoder("utf-8");
-            const data = Deno.readFileSync(this.configService.getScriptFile());
-            contentScriptFile = decoder.decode(data);
+            contentScriptFile = (new TextDecoder("utf-8")).decode(Deno.readFileSync(this.configService.getScriptFile()));
         } catch (e) {
             console.log(`CANNOT OPEN SCRIPT FILE: ${this.configService.getScriptFile()}
             ERROR: ${e}`);
         }
 
         const linebyLine = contentScriptFile.split(/\r?\n/);
-        
 
-        for (let index = 0; index < linebyLine.length; index++) {
-            const line = linebyLine[index];
-            const tokens = this.parseScriptLine(line);
-            const a = await this.processScriptLine(tokens);
+        for await (const line of linebyLine) {
+            const a = await this.processScriptLine(this.parseScriptLine(line));
             videos.push(...a.videos);
             filenamesFromScriptFile.push(...a.filenames);
         }
@@ -89,11 +84,11 @@ export class MP4UtilsFunctions {
             destPath: this.configService.getAll().dirs.destPath,
             joinPath: this.configService.getAll().dirs.joinPath,
         };
+        
         const filenames = _.difference(filenamesFromScanDir, filenamesFromScriptFile);
-
-        filenames.forEach((element: string) => {
+        filenames.forEach((elm: string) => {
             const child = new VideoFile(false, defaultSettings, false);
-            child.inputFileName = element;
+            child.inputFileName = elm;
             videos.push(child);
         });
 
@@ -108,10 +103,16 @@ export class MP4UtilsFunctions {
         let joinFileName = '';
         const childFileName: string[] = [];
         const videoFileObjects: VideoFile[] = [];
+        // define defaultSettings
+        const defaultSettings: DefaultVideoFileSettings = {
+            ba: audioBirate,
+            bv: videoBitrate,
+            sourcePath: this.configService.getAll().dirs.sourcePath,
+            destPath: this.configService.getAll().dirs.destPath,
+            joinPath: this.configService.getAll().dirs.joinPath,
+        };
 
-        for (let index = 0; index < tokens.length; index++) {
-            const element = tokens[index];
-
+        for (const element of tokens) {
             switch (element?.type) {
                 case 'videoBirate':
                     videoBitrate = parseInt(element.value);
@@ -134,35 +135,25 @@ export class MP4UtilsFunctions {
             }
         }
 
-        // define defaultSettings
-        const defaultSettings: DefaultVideoFileSettings = {
-            ba: audioBirate,
-            bv: videoBitrate,
-            sourcePath: this.configService.getAll().dirs.sourcePath,
-            destPath: this.configService.getAll().dirs.destPath,
-            joinPath: this.configService.getAll().dirs.joinPath,
-        };
-
-        if(joinFileName.length > 0) {
-            // this is a JOIN file!!!
-            const videoFileObject = new VideoFile(true, defaultSettings);            
-            videoFileObject.inputFileName = joinFileName;
-
-            // add children
+        const addtoArray = (isChild = false) => {
             childFileName.forEach(element => {
                 const child = new VideoFile(false, defaultSettings);
                 child.inputFileName = element;
-                videoFileObject.addChild(child);
+                
+                if(isChild) {
+                    videoFileObjects[0].addChild(child);
+                } else {
+                    videoFileObjects.push(child);
+                }
             });
+        };
 
-            videoFileObjects.push(videoFileObject);
+        if(joinFileName.length > 0) {
+            videoFileObjects[0] = new VideoFile(true, defaultSettings);
+            videoFileObjects[0].inputFileName = joinFileName;
+            addtoArray(true);
         } else {
-            // just an video item
-            childFileName.forEach(element => {
-                const child = new VideoFile(false, defaultSettings, false);
-                child.inputFileName = element;
-                videoFileObjects.push(child);
-            });
+            addtoArray(false);
         }
 
         return {
@@ -191,7 +182,6 @@ export class MP4UtilsFunctions {
                 joinFileName: {
                     match: /[._\da-zA-Z-]+/,
                     value: s => {
-                        s = MP4UtilsFunctions.autoAppendFileExtension(s);
                         return s;
                     }
                 },
@@ -209,7 +199,6 @@ export class MP4UtilsFunctions {
                 childFileName: {
                     match: /[._\da-zA-Z-]+/,
                     value: s => {
-                        s = MP4UtilsFunctions.autoAppendFileExtension(s);
                         return s;
                     }
                 },
@@ -232,9 +221,9 @@ export class MP4UtilsFunctions {
                 cmd: cmd,
                 stdout: "piped",
                 stderr: "piped",
-              });
-        
-            const outStr = new TextDecoder('utf-8').decode(await p.output()); // hello
+              });       
+            
+            const outStr = new TextDecoder('utf-8').decode(await p.output());
             p.close();
             return outStr;
         } catch (error) {
