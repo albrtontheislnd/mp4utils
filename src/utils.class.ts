@@ -39,6 +39,16 @@ export class MP4UtilsFunctions {
         return newfileName;
     }
 
+    static forceMP4Extension(filePath: string) {
+        const fileExtension = path.extname(filePath).replace(/\./img, "");
+
+        if(fileExtension !== 'mp4') {
+            return `${filePath}.mp4`;
+        } else {
+            return filePath;
+        }
+    }
+
     processSourceDir(): string[] {
         const filenames: string[] = [];
         // get list of video files in Source Directory FOR CONVERTING
@@ -52,13 +62,19 @@ export class MP4UtilsFunctions {
     }
 
     async processScriptFile(): Promise<VideoFile[]> {
+
+        const runtimeEnvs = MP4UtilsConfiguration.getBinEnvs();
+
         let contentScriptFile = '';
         const videos: VideoFile[] = [];
         const filenamesFromScanDir: string[] = [];
         const filenamesFromScriptFile: string[] = [];
 
         // Scan sourcePath and add videos filenames
-        filenamesFromScanDir.push(...this.processSourceDir());
+        // if this is legacy_join, skip!
+        if(!runtimeEnvs.legacy_join) {
+            filenamesFromScanDir.push(...this.processSourceDir());
+        }
 
         try {
             contentScriptFile = (new TextDecoder("utf-8")).decode(Deno.readFileSync(this.configService.getScriptFile()));
@@ -97,6 +113,8 @@ export class MP4UtilsFunctions {
 
     // deno-lint-ignore require-await
     async processScriptLine(tokens: moo.Token[]): Promise<LineObjectsResult> {
+
+        const runtimeEnvs = MP4UtilsConfiguration.getBinEnvs();
 
         let videoBitrate = this.configService.getAll().birateSettings.bv;
         let audioBirate = this.configService.getAll().birateSettings.ba;
@@ -141,12 +159,22 @@ export class MP4UtilsFunctions {
                 child.inputFileName = element;
                 
                 if(isChild) {
-                    videoFileObjects[0].addChild(child);
+                    if(!runtimeEnvs.legacy_join || (runtimeEnvs.legacy_join && child.isOutputFileExists())) {
+                        // if legacy_join, we check file existing!
+                        videoFileObjects[0].addChild(child);
+                    }
                 } else {
                     videoFileObjects.push(child);
                 }
             });
         };
+
+        if((runtimeEnvs.legacy_convert && joinFileName.length > 0) || (runtimeEnvs.legacy_join && joinFileName.length == 0)) {
+            return {
+                videos: [],
+                filenames: [],
+            };
+        }
 
         if(joinFileName.length > 0) {
             videoFileObjects[0] = new VideoFile(true, defaultSettings);
@@ -256,7 +284,7 @@ export class MP4UtilsFunctions {
 
             sub?.stdout?.on('data', function (data) {
                 const x = data.toString();
-                content = `${content}\r\n${x}`;
+                // content = `${content}\r\n${x}`;
                 console.log(x);
             });
         
@@ -293,8 +321,6 @@ export class MP4UtilsFunctions {
             exitCode = 1;
             console.log(`SUBPROCESS ERROR: ${error}`);
         }
-
-
 
         return {
             output: content,

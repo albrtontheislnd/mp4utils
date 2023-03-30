@@ -1,7 +1,7 @@
 import { cosmiconfigSync } from "https://esm.sh/cosmiconfig@8.1.2";
 import { fileURLToPath } from "https://deno.land/std@0.177.0/node/url.ts";
 import * as path from "https://deno.land/std@0.180.0/path/mod.ts";
-import { ConfigObject } from "./config.interface.ts";
+import { ConfigObject, EnvObject } from "./config.interface.ts";
 
 export class MP4UtilsConfiguration {
 
@@ -11,6 +11,7 @@ export class MP4UtilsConfiguration {
 
     constructor() {
         const execBin = path.parse(Deno.execPath());
+        
         if(execBin.base == 'deno') {
             console.log(`Running: script mode.`);
             this.configFile = fileURLToPath(import.meta.resolve("../main.yaml"));
@@ -46,5 +47,12 @@ export class MP4UtilsConfiguration {
         Deno.env.set("MP4UTILS_BIN_FFMPEG", this.configObject.bin.ffmpeg);
         Deno.env.set("MP4UTILS_BIN_FFPROBE", this.configObject.bin.ffprobe);
         Deno.env.set("MP4UTILS_BIN_AVIDEMUX", this.configObject.bin.avidemux);
+    }
+
+    static getBinEnvs(): EnvObject {
+        return {
+            legacy_join: (Deno.env.get('MP4UTILS_FLAG') === 'legacy_join'),
+            legacy_convert: (Deno.env.get('MP4UTILS_FLAG') === 'legacy_convert'),
+        };
     }
 }

@@ -1,6 +1,7 @@
 import * as path from "https://deno.land/std@0.180.0/path/mod.ts";
 import { colors } from "https://deno.land/x/cliffy@v0.25.7/ansi/colors.ts";
 import { MP4UtilsFunctions } from "./utils.class.ts";
+import { MP4UtilsConfiguration } from "./config.class.ts";
 
 export enum VideoFileStatus {
   blank,
@@ -27,7 +28,7 @@ export class VideoFile {
 
     private _inputFileName = '';
     private _outputFileName = '';
-    private _originalFileName = ''; // only for tracking joining files
+    private _originalFileName = '';
     private _children: VideoFile[] = [];
     private _isJoinFileName = false;
     private _success = false;
@@ -41,8 +42,15 @@ export class VideoFile {
 
     constructor(isJoin: boolean = false, defaultSettings: DefaultVideoFileSettings, randomHex: boolean = true) {
 
+      const runtimeEnvs = MP4UtilsConfiguration.getBinEnvs();
+      
+      if(runtimeEnvs.legacy_convert || runtimeEnvs.legacy_join) {
+        this._randomHex = false;
+      } else {
+        this._randomHex = randomHex;
+      }
+
       this._isJoinFileName = isJoin;
-      this._randomHex = randomHex;
       this._defaultSettings = defaultSettings;
     }
 
@@ -56,7 +64,9 @@ export class VideoFile {
         this._outputFileName = this._inputFileName;
       } else {
         this._outputFileName = (this._randomHex) ? MP4UtilsFunctions.autoAppendRandomString(this._inputFileName) : this._inputFileName;
-      } 
+      }
+      
+      this._outputFileName = MP4UtilsFunctions.forceMP4Extension(this._outputFileName);
     }
     get inputFileName() { return this._inputFileName }
 
@@ -184,8 +194,12 @@ export class VideoFile {
     }
 
     async doConvert() {
+
+      const runtimeEnvs = MP4UtilsConfiguration.getBinEnvs();
+
       // announce!
       if(!this.isJoinFileName) {
+
         if(!this.isInputFileExists()) {
           console.log(colors.bgBlack.red(`ERROR! NOT FOUND ${this.inputFilePath}`));
           this.setStatus(false, VideoFileStatus.inputFileDoesNotExist);
@@ -247,9 +261,12 @@ export class VideoFile {
         const args: any[] = [];
 
         for await (const childVideo of this._children) {
-          await childVideo.doConvert();
 
-          if(!childVideo.isSuccessful()) {
+          if(!runtimeEnvs.legacy_join) await childVideo.doConvert();
+
+          if(!runtimeEnvs.legacy_join && !childVideo.isSuccessful()) {
+            fails = fails + 1;
+          } else if (runtimeEnvs.legacy_join && !this.isOutputFileExists()) {
             fails = fails + 1;
           } else {
             ArgumentList += (index == 0) ? `--load "${childVideo.outputFilePath}" ` : `--append "${childVideo.outputFilePath}" `;
@@ -259,30 +276,39 @@ export class VideoFile {
           index = index + 1;
         }
 
+        if(this._children.length == 0) {
+          console.log(colors.bgBlack.red(`ERROR! ERROR MERGING FILE ${this.outputFilePath}`));
+          console.log(colors.bgBlack.red(`Reason: No files in the list.`));
+          this.setStatus(false, VideoFileStatus.joinError);
+          return;
+        }
+
         if(fails > 0) {
           console.log(colors.bgBlack.red(`ERROR! ERROR MERGING FILE ${this.outputFilePath}`));
-          console.log(colors.bgBlack.red(`Reason: ${fails} video conversion(s) failed.`));
+          console.log(colors.bgBlack.red(`Reason: ${fails} video conversion(s) failed or file is not existed.`));
           this.setStatus(false, VideoFileStatus.joinError);
           return;
         }
 
         // begin JOIN!
         ArgumentList += ` --video-codec copy --audio-codec copy --output-format mp4 --save "${this.outputFilePath}"`;
-        console.log(ArgumentList);
         args.push('--video-codec', 'copy', '--audio-codec', 'copy', '--output-format', 'mp4', '--save', this.outputFilePath);
+        console.log(ArgumentList);
 
-        // Delete old master file before joining
-        MP4UtilsFunctions.deleteFile(this.outputFilePath);
 
         // Join
         try {
+          // Delete old master file before joining
+          MP4UtilsFunctions.deleteFile(this.outputFilePath);
+
+          // join using avidemux!
           const outputRs = await MP4UtilsFunctions.spawnExec(<string>Deno.env.get("MP4UTILS_BIN_AVIDEMUX"), args);
-          if(outputRs?.exitCode != 0) {
-            throw `Error with Exit Code: ${outputRs?.exitCode}`;
-          }
+          if(outputRs?.exitCode != 0) throw `Error with Exit Code: ${outputRs?.exitCode}`;
+
           // success!
           this.setStatus(true, VideoFileStatus.successful, true);
           console.log(`SUCCESSFULLY JOINED/MERGED INTO FILE ${this.outputFilePath}`);
+
         } catch(e) {
           // failed
           this.setStatus(false, VideoFileStatus.joinError, true);

@@ -16,3 +16,8 @@ export interface ConfigObject {
         avidemux: string,
     }
 }
+
+export interface EnvObject {
+    legacy_join: boolean,
+    legacy_convert: boolean,
+}
