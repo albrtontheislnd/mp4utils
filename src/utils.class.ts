@@ -272,6 +272,8 @@ export class MP4UtilsFunctions {
         let content = '';
         let exitCode = 1;
 
+        const enc = (s: string) => new TextEncoder().encode(s);
+
         try {
             const sub = spawn(cmd, args);
 
@@ -284,14 +286,12 @@ export class MP4UtilsFunctions {
 
             sub?.stdout?.on('data', function (data) {
                 const x = data.toString();
-                // content = `${content}\r\n${x}`;
-                console.log(x);
+                Deno.stdout.writeSync(enc(`${x}\r`));
             });
         
             sub?.stderr?.on('data', function (data) {
                 const x = data.toString();
-                content = `${content}\r\n${x}`;
-                console.log(x);
+                Deno.stdout.writeSync(enc(`${x}\r`));
             });
         
             sub?.on('exit', function (code) {
